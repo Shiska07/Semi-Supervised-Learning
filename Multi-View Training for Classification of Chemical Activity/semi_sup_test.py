@@ -94,6 +94,7 @@ y_train_all_views = [y_train, y_train, y_train, y_train]
 
 for i, df_u in enumerate(X_train_fps_u):
     X_train_fps_u[i] = X_train_fps_u[i].reset_index()
+    X_train_fps_u[i] = X_train_fps_u[i].rename(columns={'index': 'id'})
 
 
 def get_best_params():
@@ -135,7 +136,7 @@ def train_models(cv_params):
 
 
 # gets indices and prediction for 'n' most confident predictions in each view
-def get_best_n_prediction_indices(knn_models, n):
+def get_best_n_prediction_indices(knn_models, n_values):
     # initialize list to store most confident indices and labels for each view
     ids_list = []
     labels_list = []
@@ -150,7 +151,7 @@ def get_best_n_prediction_indices(knn_models, n):
         y_pred_prob_u = knn_models[i].predict_proba(X_train_u)[np.arange(0, n_samples), y_pred_u]
 
         # get indices and labels of datapoints with most confident predictions
-        max_prob_indices = np.argsort(y_pred_prob_u)[::-1][:n]
+        max_prob_indices = np.argsort(y_pred_prob_u)[::-1][:n_values]
         max_prob_labels = y_pred_u[max_prob_indices]
 
         # get id values corresponding to the indices
@@ -179,6 +180,14 @@ def add_unlabeled_data(ids_list, labels_list):
         ids_arr = (np.array(ids_to_use)).flatten()
         labels_arr = (np.array(labels_to_use)).flatten()
 
+        # out of all ids only ids present in the current
+        # view's df can be used
+        all_ids = X_train_fps_u[0]['id'].values
+        valid_indices = [val in all_ids for val in ids_arr]
+
+        ids_arr = ids_arr[valid_indices]
+        labels_arr = labels_arr[valid_indices]
+
         # create dataframe to concatenate
         smiles_ser = (X_train_fps_u[i].loc[X_train_fps_u[0]['id'].isin(ids_arr)]).reset_index(drop=True)
         smiles_ser.drop('id', inplace = True, axis = 1)
@@ -197,8 +206,9 @@ def add_unlabeled_data(ids_list, labels_list):
         y_train_all_views[i].reset_index(inplace=True, drop=True)
 
         # remove added data from unlabeled df
-        indices_to_drop = (X_train_fps_u[i][X_train_fps_u[i]['id'].isin(ids_list)]).index
+        indices_to_drop = (X_train_fps_u[i][X_train_fps_u[i]['id'].isin(ids_arr)]).index
         X_train_fps_u[i].drop(index = indices_to_drop, axis=0, inplace=True, errors='ignore')
+        X_train_fps_u[i].reset_index(inplace = True, drop = True)
 
 
 def get_combined_test_accuracy(models_list):
