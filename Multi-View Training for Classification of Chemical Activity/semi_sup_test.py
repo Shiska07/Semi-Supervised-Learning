@@ -92,6 +92,10 @@ X_train_fps_u = get_fingerprints(D_u['SMILES'])
 y_train_all_views = [y_train, y_train, y_train, y_train]
 
 
+for i, df_u in enumerate(X_train_fps_u):
+    X_train_fps_u[i] = X_train_fps_u[i].reset_index()
+
+
 def get_best_params():
     # random gird will be for hyperparameter tuning
     random_grid = {
@@ -104,49 +108,12 @@ def get_best_params():
     cv_params = []
     knn_c = KNeighborsClassifier()
     for i, X_train_fp in enumerate(X_train_fps_s):
-        knn_cv = RandomizedSearchCV(estimator=knn_c, param_distributions=random_grid, n_iter=10, verbose=1)
+        knn_cv = RandomizedSearchCV(estimator=knn_c, param_distributions=random_grid, n_iter=5, verbose=1)
         knn_cv.fit(X_train_fp, y_train)
         print(f'{knn_cv.best_params_}\n')
         cv_params.append(knn_cv.best_params_)
 
     return cv_params
-
-
-# trains the model on labeled data
-def train_models(cv_params):
-
-    # fit final models
-    final_models = []
-    for i, params in enumerate(cv_params):
-        knn_final = KNeighborsClassifier(**params)
-        knn_final.fit(X_train_fps_s[i], y_train)
-        final_models.append(knn_final)
-
-    return final_models
-
-
-# gets indices and prediction for 'n' most confident predictions in each view
-def get_best_n_prediction_indices(knn_models, n):
-    # initialize list to store most confident indices and labels for each view
-    indices_list = []
-    labels_list = []
-
-    for i, val in enumerate(knn_models):
-        # get number of samples in unlabeled data
-        n_samples = X_train_fps_u[i].shape[0]
-
-        # get predictions and prediction probability
-        y_pred_u = knn_models[i].predict(X_train_fps_u[i])
-        y_pred_prob_u = knn_models[i].predict_proba((X_train_fps_u[i]))[np.arange(0, n_samples), y_pred_u]
-
-        # get indices and labels of datapoints with most confident predictions
-        max_prob_indices = np.argsort(y_pred_prob_u)[::-1][:n]
-        max_prob_labels = y_pred_u[max_prob_indices]
-
-        indices_list.append(max_prob_indices)
-        labels_list.append(max_prob_labels)
-
-    return indices_list, labels_list
 
 
 # returns min of the total number of unlabeled samples remaining in each view
@@ -155,25 +122,66 @@ def get_min_unlabeled_data_count():
     return min(samples_count_list)
 
 
-# given a list of indices and predicted labels for each view from the unlabeled data
+# trains the model on labeled data
+def train_models(cv_params):
+    # fit final models
+    final_models = []
+    for i, params in enumerate(cv_params):
+        knn_final = KNeighborsClassifier(**params)
+        knn_final.fit(X_train_fps_s[i], y_train_all_views[i])
+        final_models.append(knn_final)
+
+    return final_models
+
+
+# gets indices and prediction for 'n' most confident predictions in each view
+def get_best_n_prediction_indices(knn_models, n):
+    # initialize list to store most confident indices and labels for each view
+    ids_list = []
+    labels_list = []
+
+    for i, val in enumerate(knn_models):
+        # get number of samples in unlabeled data
+        n_samples = X_train_fps_u[i].shape[0]
+
+        # get predictions and prediction probability
+        X_train_u = X_train_fps_u[i][X_train_fps_u[i].columns[1:]]
+        y_pred_u = knn_models[i].predict(X_train_u)
+        y_pred_prob_u = knn_models[i].predict_proba(X_train_u)[np.arange(0, n_samples), y_pred_u]
+
+        # get indices and labels of datapoints with most confident predictions
+        max_prob_indices = np.argsort(y_pred_prob_u)[::-1][:n]
+        max_prob_labels = y_pred_u[max_prob_indices]
+
+        # get id values corresponding to the indices
+        max_prob_ids = X_train_fps_u[i].loc[max_prob_indices]['id'].values
+
+        ids_list.append(max_prob_ids)
+        labels_list.append(max_prob_labels)
+
+    return ids_list, labels_list
+
+
+# given a list of ids and predicted labels for each view from the unlabeled data
 # adds datapoints to the training data
 # predcitions made by one model in a single view are added to training data in all other views
-def add_unlabeled_data(indices_list, labels_list):
-    for i in range(len(indices_list)):
+def add_unlabeled_data(ids_list, labels_list):
+    for i in range(len(ids_list)):
         # make copy
-        indices_to_use = indices_list.copy()
+        ids_to_use = ids_list.copy()
         labels_to_use = labels_list.copy()
 
         # remove ith indices list and labels list
-        indices_to_use.pop(i)
+        ids_to_use.pop(i)
         labels_to_use.pop(i)
 
         # create a single array
-        indices_arr = (np.array(indices_to_use)).flatten()
+        ids_arr = (np.array(ids_to_use)).flatten()
         labels_arr = (np.array(labels_to_use)).flatten()
 
         # create dataframe to concatenate
-        smiles_ser = (X_train_fps_u[i].iloc[indices_arr]).reset_index(drop=True)
+        smiles_ser = (X_train_fps_u[i].loc[X_train_fps_u[0]['id'].isin(ids_arr)]).reset_index(drop=True)
+        smiles_ser.drop('id', inplace = True, axis = 1)
         labels_ser = pd.Series(labels_arr, name='acitvity')
         df_to_add = pd.concat([smiles_ser, labels_ser], axis=1)
 
@@ -189,9 +197,9 @@ def add_unlabeled_data(indices_list, labels_list):
         y_train_all_views[i].reset_index(inplace=True, drop=True)
 
         # remove added data from unlabeled df
-        X_train_fps_u[i].drop(index=indices_arr, axis=0, inplace=True)
+        indices_to_drop = (X_train_fps_u[i][X_train_fps_u[i]['id'].isin(ids_list)]).index
+        X_train_fps_u[i].drop(index = indices_to_drop, axis=0, inplace=True, errors='ignore')
 
-    return 0
 
 def get_combined_test_accuracy(models_list):
     n_test_samples = y_test.shape[0]
@@ -231,10 +239,33 @@ def print_individual_test_accuracies(models_list):
         f1 = f1_score(y_test, y_pred)
         print(f'Accuracy for model trained on {fingerprint_name[i]} is {acc:0.3f} and f1-score is {f1:0.3f}.\n')
 
+
 # train models for each view on the labeled data
 model_params = get_best_params()
 sup_models = train_models(model_params)
 
-idx_list, lab_list = get_best_n_prediction_indices(sup_models, 10)
 
-res = print_combined_test_accuracy(sup_models)
+# runs multiview training using 'n_values' from the unlabeled data each iteration
+def multi_view_training(n_values):
+    # initialize list to store combined test acc
+    # combined training acc not calculated as training data is not the same for different views
+    test_acc = []
+    test_f1 = []
+
+    # run loop as long as there's enough unlabeled data
+    while get_min_unlabeled_data_count() >= n_values:
+        # train model and get test accuracy scores
+        models_list = train_models(model_params)
+        acc, f1_sc = get_combined_test_accuracy(models_list)
+        test_acc.append(acc)
+        test_f1.append(f1_sc)
+
+        # get prediction on unlabeled data and add 'n' most confident datapoints to labeled data
+        ids_list, labels_list = get_best_n_prediction_indices(models_list, n_values)
+        add_unlabeled_data(ids_list, labels_list)
+
+    return models_list, test_acc, test_f1
+
+# get final models and test acuuracy scores
+n = 10
+final_models_list, test_acc_list, test_f1_list = multi_view_training(n)
