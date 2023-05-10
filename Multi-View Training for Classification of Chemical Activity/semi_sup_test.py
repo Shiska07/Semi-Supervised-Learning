@@ -91,11 +91,9 @@ X_test_fps = get_fingerprints(X_test)
 X_train_fps_u = get_fingerprints(D_u['SMILES'])
 y_train_all_views = [y_train, y_train, y_train, y_train]
 
-
 for i, df_u in enumerate(X_train_fps_u):
     X_train_fps_u[i] = X_train_fps_u[i].reset_index()
-    X_train_fps_u[i] = X_train_fps_u[i].rename(columns={'index': 'id'})
-
+    X_train_fps_u[i] = X_train_fps_u[i].rename(columns = {'index': 'id'})
 
 def get_best_params():
     # random gird will be for hyperparameter tuning
@@ -155,7 +153,7 @@ def get_best_n_prediction_indices(knn_models, n_values):
         max_prob_labels = y_pred_u[max_prob_indices]
 
         # get id values corresponding to the indices
-        max_prob_ids = X_train_fps_u[i].loc[max_prob_indices]['id'].values
+        max_prob_ids = X_train_fps_u[i].iloc[max_prob_indices]['id'].values
 
         ids_list.append(max_prob_ids)
         labels_list.append(max_prob_labels)
@@ -182,21 +180,36 @@ def add_unlabeled_data(ids_list, labels_list):
 
         # out of all ids only ids present in the current
         # view's df can be used
-        all_ids = X_train_fps_u[0]['id'].values
-        valid_indices = [val in all_ids for val in ids_arr]
+        all_valid_ids = X_train_fps_u[i]['id'].values
+        valid_indices = [val in all_valid_ids for val in ids_arr]
 
-        ids_arr = ids_arr[valid_indices]
-        labels_arr = labels_arr[valid_indices]
+        # get valid values
+        valid_ids_arr = ids_arr[valid_indices]
+        valid_labels_arr = labels_arr[valid_indices]
+
+        # remove duplicate values in ids and labels
+        unique_ids = []
+        unique_indices = []
+        for val in valid_ids_arr:
+            if val not in unique_ids:
+                unique_ids.append(val)
+                unique_indices.append(True)
+            else:
+                unique_indices.append(False)
+
+        # get unique values
+        final_ids_arr = valid_ids_arr[unique_indices]
+        final_labels_arr = valid_labels_arr[unique_indices]
 
         # create dataframe to concatenate
-        smiles_ser = (X_train_fps_u[i].loc[X_train_fps_u[0]['id'].isin(ids_arr)]).reset_index(drop=True)
+        smiles_ser = (X_train_fps_u[i].loc[X_train_fps_u[i]['id'].isin(final_ids_arr)]).reset_index(drop=True)
         smiles_ser.drop('id', inplace = True, axis = 1)
-        labels_ser = pd.Series(labels_arr, name='acitvity')
+        labels_ser = pd.Series(final_labels_arr, name='acitvity')
         df_to_add = pd.concat([smiles_ser, labels_ser], axis=1)
 
         # drop duplicates and reset index
-        df_to_add.drop_duplicates(subset=df_to_add.columns[:-1], inplace=True)
-        df_to_add.reset_index(inplace=True, drop=True)
+        # df_to_add.drop_duplicates(subset=df_to_add.columns[:-1], inplace=True)
+        # df_to_add.reset_index(inplace=True, drop=True)
 
         # concatenate to labeled data and reset indices
         X_train_fps_s[i] = pd.concat([X_train_fps_s[i], df_to_add[df_to_add.columns[:-1]]], axis=0)
@@ -206,7 +219,7 @@ def add_unlabeled_data(ids_list, labels_list):
         y_train_all_views[i].reset_index(inplace=True, drop=True)
 
         # remove added data from unlabeled df
-        indices_to_drop = (X_train_fps_u[i][X_train_fps_u[i]['id'].isin(ids_arr)]).index
+        indices_to_drop = (X_train_fps_u[i][X_train_fps_u[i]['id'].isin(final_ids_arr)]).index
         X_train_fps_u[i].drop(index = indices_to_drop, axis=0, inplace=True, errors='ignore')
         X_train_fps_u[i].reset_index(inplace = True, drop = True)
 
