@@ -1,1 +1,9 @@
-This folder contains implementation of a Semi-Supervised Multiview training algorithm using a K Nearest Neighbor for the SCD1 receptor data. The motive behind using a semi-supervised approach on this dataset is to compansate for the low number of labeled datapoints which generally isn't enough to train a robust classification/regression model. Using the vast amount of unlabeled dataset from CHEMBL as well as the relelively small labeled dataset for SCD1, the semi-supervised learning algorithm implemented here is an attempt to train a more robust model.
+Data file(s):
+1. D_s_SCD1_L.csv: Labeled data for part 1
+2. D_u_SCD1_L.csv: Unlabeled data for part 1
+3. D_s_SCD1.csv: Labeled data for part 2
+4. D_u_SCD1.csv: Unlabeled data for part 2
+
+Jupyter notebooks:
+1. Multi-View_Training_for_Chemical_Activity_Classification-P1.ipynb: Jupyter notebook containing all the implementation and results for Part-1 of the project which uses the original labeled and unlabeled datsets. The data will be automatically read after running all cells.
+2. Multi-View_Training_for_Chemical_Activity_Classification-P2.ipynb: Jupyter notebook containing all the implementation and results for Part-2 of the project which uses a part of the labeled data to simulate unlabeled data. The data will be automatically read after running all cells.
